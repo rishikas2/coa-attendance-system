@@ -1,0 +1,113 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Servo.h>
+
+#define SS_PIN 10
+#define RST_PIN 9
+#define SERVO_PIN 3
+
+// Function declarations
+void lockDoor();
+void unlockDoor();
+
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+Servo doorServo;
+
+byte card_ID[4];
+const byte knownCards[][4] = {
+  {0x73, 0xE8, 0xDA, 0x24}, // Krish Jhawar
+  {0x33, 0x03, 0xDE, 0xF4}, // Aaryan Katiyar
+  {0xD9, 0x24, 0x5f, 0x61},  // Rishika Sarkar
+ // {0x59, 0xB2, 0x61, 0x61}
+};
+const char* studentNames[] = {"Krish Jhawar", "Aaryan Katiyar", "Rishika Sarkar"};
+const int studentNumbers[] = {70, 98, 71};
+int NumbCard[sizeof(knownCards) / sizeof(knownCards[0])] = {0}; // Dynamically adjust size based on knownCards array
+int const RedLed = 6;
+int const GreenLed = 5;
+int const Buzzer = 8;
+String Name;
+long Number;
+int unlockedPosition = 90;
+int lockedPosition = 0;
+
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  mfrc522.PCD_Init();
+  doorServo.attach(SERVO_PIN);
+  lockDoor();
+  
+  Serial.println("CLEARSHEET");
+  Serial.println("LABEL,Date,Time,Name,Number");
+  
+  pinMode(RedLed, OUTPUT);
+  pinMode(GreenLed, OUTPUT);
+  pinMode(Buzzer, OUTPUT);
+}
+
+void loop() {
+  if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  bool cardMatched = false;
+  for (int i = 0; i < sizeof(knownCards) / sizeof(knownCards[0]); i++) {
+    bool match = true;
+    for (byte j = 0; j < 4; j++) {
+      if (mfrc522.uid.uidByte[j] != knownCards[i][j]) {
+        match = false;
+        break;
+      }
+    }
+
+    if (match) {
+      Name = studentNames[i];
+      Number = studentNumbers[i];
+      cardMatched = true;
+
+      if (NumbCard[i] == 1) {
+        Serial.println("Already Exist");
+      } else {
+        NumbCard[i] = 1;
+        Serial.print("DATA,DATE,TIME," + Name);
+        Serial.print(",");
+        Serial.println(Number);
+        
+        digitalWrite(GreenLed, HIGH);
+        digitalWrite(RedLed, LOW);
+        digitalWrite(Buzzer, HIGH);
+        delay(30);
+        digitalWrite(Buzzer, LOW);
+        Serial.println("SAVEWORKBOOKAS,Names/WorkNames");
+
+        unlockDoor();
+        delay(5000);
+        lockDoor();
+      }
+      break;
+    }
+  }
+
+  if (!cardMatched) {
+    digitalWrite(GreenLed, LOW);
+    digitalWrite(RedLed, HIGH);
+    delay(2000);
+  }
+
+  delay(1000);
+  digitalWrite(GreenLed, LOW);
+  digitalWrite(RedLed, LOW);
+}
+
+// Function to unlock the door by moving the servo to the unlocked position
+void unlockDoor() {
+  doorServo.write(unlockedPosition);
+  Serial.println("Door unlocked.");
+}
+
+// Function to lock the door by moving the servo to the locked position
+void lockDoor() {
+  doorServo.write(lockedPosition);
+  Serial.println("Door locked.");
+}
